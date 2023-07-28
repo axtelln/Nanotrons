@@ -54,7 +54,8 @@ import logging
 import os
 import sys
 import platform
-from constants import THERMOCYCLER_CONNECTED, TEMPDECK_CONNECTED 
+from constants import THERMOCYCLER_CONNECTED, TEMPDECK_CONNECTED
+import json 
 
 DISTANCE = 10 #mm
 LINUX_OS = 'posix'
@@ -102,7 +103,12 @@ class Coordinator:
         os_recognized = os.name
         # print(f"OS recognized in init: {os_recognized}")
         self.ot_control = OT2_nanotrons_driver()
-        self.mc = joystick.XboxJoystick(operating_system)
+        self.controller = joystick.XboxJoystick(operating_system)
+        self.controller_profile = "profiles/default_profile.json"
+        with open(self.controller_profile, 'r') as myfile:
+            data = myfile.read()
+        settingsObj = json.loads(data)
+        self.controller_profile = settingsObj
         self.myLabware = Labware_class()
         self.allow_homing = False
         self.syringe_homing_warned = False
@@ -118,9 +124,9 @@ class Coordinator:
             # print("Init function Windows")
             operating_system = "w"
             if RUNNING_APP_FOR_REAL and CONTROLLER_CONNECTED:
-                self.mc = joystick.XboxJoystick(operating_system)
+                self.controller = joystick.XboxJoystick(operating_system)
             else:
-                self.mc = Keyboard(self.ot_control)
+                self.controller = Keyboard(self.ot_control)
 
         # really not sure if setup was ever completed/tested for other OS
         elif os_recognized == LINUX_OS: 
@@ -196,23 +202,23 @@ class Coordinator:
         return settingsDic
 
     def start_listening(self):
-        self.mc.start_pygame()
-        self.mc.listen()
+        self.controller.start_pygame()
+        self.controller.listen()
 
     def stop_joystick_control(self):
         """ This method turns off the flag that enables listening to the joystick, which triggers killing manual control given that the loop depends on that flag
         """
         try:
-            self.mc.stop_joystick = True
+            self.controller.stop_joystick = True
         except AttributeError:
             print("Trying to stop listening controller inputs but no controller connected")
     
     def joystick_control(self):
         """ This method opens a secondary thread to listen to the input of the joystick (have a real time update of the triggered inputs) and calls monitor_joystick on the main thread on a loop
         """
-        self.mc.stop_joystick = False
+        self.controller.stop_joystick = False
 
-        if not self.mc.pygame_running:
+        if not self.controller.pygame_running:
             t1 = threading.Thread(target=self.start_listening)
             t1.start()
             while(t1.is_alive()):
@@ -226,133 +232,145 @@ class Coordinator:
     def monitor_joystick(self):
         """ This method reads the values being collected from triggered inputs in the joystick and executes the methods associated with them
         """
-        button, hat, axis,  = self.mc.deliver_joy()
-        self.mc.reset_values()
+        buttons, hats, axes,  = self.controller.deliver_joy()
+        self.controller.reset_values()
         syringe_model = self.myLabware.get_syringe_model()
         syringe_parameters = self.myModelsManager.get_model_parameters(LABWARE_SYRINGE, syringe_model)
+
+        for button in buttons:
+            method_name = self.controller_profile[button]
+            method = getattr(self.ot_control, method_name, False)
+            method(self.ot_control.xyz_step_size)
+
+
+        for axis in axes:
+            method_name = self.controller_profile[axis]
+            method = getattr(self.ot_control, method_name, False)
+            method(self.ot_control.xyz_step_size)
+
         
-        if len(button) != 0:
-            if button[0] == "START":
-                if self.myLabware.syringe_model_is_default:
-                    print("Please select a syringe model (start) ")
+        # if len(button) != 0:
+        #     if button[0] == "START":
+        #         if self.myLabware.syringe_model_is_default:
+        #             print("Please select a syringe model (start) ")
                 
-                else :
-                    # print(f"Current syringe model is: {syringe_model}")
-                    self.user_input = input("Enter volume in nanoliters: ")
-                    self.ot_control.set_nL(self.user_input)
-                    self.user_input2 = input("Enter flow-rate in nanoliters per second: ")
-                    #self.ot_control.set_nL(self.user_input2) (Not being used currently)
-                    self.ot_control.set_step_speed_syringe_motor(self.flowrate_to_speed_converter(float(self.user_input2)))
-                    self.ot_control.set_step_size_syringe_motor(self.volume_to_distance_converter(int(self.user_input)))
-                    print('')
+        #         else :
+        #             # print(f"Current syringe model is: {syringe_model}")
+        #             self.user_input = input("Enter volume in nanoliters: ")
+        #             self.ot_control.set_nL(self.user_input)
+        #             self.user_input2 = input("Enter flow-rate in nanoliters per second: ")
+        #             #self.ot_control.set_nL(self.user_input2) (Not being used currently)
+        #             self.ot_control.set_step_speed_syringe_motor(self.flowrate_to_speed_converter(float(self.user_input2)))
+        #             self.ot_control.set_step_size_syringe_motor(self.volume_to_distance_converter(int(self.user_input)))
+        #             print('')
             
-            elif button[0] == "A":
-                if (self.ot_control.side == LEFT):
-                    self.ot_control.Z_axis_Down(self.ot_control.xyz_step_size)
-                else:
-                    self.ot_control.A_axis_Down(self.ot_control.xyz_step_size)
-            elif button[0] == "B":
-                self.ot_control.report_current_position()
-            elif button[0] == "X":
-                self.ot_control.change_vertical_axis()
-            elif button[0] == "Y":
-                if self.ot_control.side == LEFT:
-                    self.ot_control.Z_axis_Up(self.ot_control.xyz_step_size)
-                else: 
-                    self.ot_control.A_axis_Up(self.ot_control.xyz_step_size)
-            elif button[0] == "RB":
-                self.ot_control.step_size_up()
-            elif button[0] == "LB":
-                self.ot_control.step_size_down()
-            elif button[0] == "LSTICK":
-                pass
-            elif button[0] == "RSTICK":
-                print("Right stick button pressed")
-                self.ot_control.update_pipette_attachment_status() # Toggles pipette attachment, default is attached
-                print("Pipette status updated")
-            elif button[0] == "BACK":
-                self.mc.stop_joystick = True
+        #     elif button[0] == "A":
+        #         if (self.ot_control.side == LEFT):
+        #             self.ot_control.Z_axis_Down(self.ot_control.xyz_step_size)
+        #         else:
+        #             self.ot_control.A_axis_Down(self.ot_control.xyz_step_size)
+        #     elif button[0] == "B":
+        #         self.ot_control.report_current_position()
+        #     elif button[0] == "X":
+        #         self.ot_control.change_vertical_axis()
+        #     elif button[0] == "Y":
+        #         if self.ot_control.side == LEFT:
+        #             self.ot_control.Z_axis_Up(self.ot_control.xyz_step_size)
+        #         else: 
+        #             self.ot_control.A_axis_Up(self.ot_control.xyz_step_size)
+        #     elif button[0] == "RB":
+        #         self.ot_control.step_size_up()
+        #     elif button[0] == "LB":
+        #         self.ot_control.step_size_down()
+        #     elif button[0] == "LSTICK":
+        #         pass
+        #     elif button[0] == "RSTICK":
+        #         print("Right stick button pressed")
+        #         self.ot_control.update_pipette_attachment_status() # Toggles pipette attachment, default is attached
+        #         print("Pipette status updated")
+        #     elif button[0] == "BACK":
+        #         self.controller.stop_joystick = True
 
-        if len(hat) != 0:
-            if hat[0] == "HAT_UP":
-                self.allow_homing = True
-                print("\nController homing enabled.\n")
+        # if len(hat) != 0:
+        #     if hat[0] == "HAT_UP":
+        #         self.allow_homing = True
+        #         print("\nController homing enabled.\n")
 
-            elif hat[0] == "HAT_LEFT":
-                if self.allow_homing == True:
-                    if self.syringe_homing_warned:
-                        print("Homing left syringe\n")
-                        self.ot_control.home('B')
-                        self.allow_homing = False
-                    else:
-                        print("\n****************************************************************************")
-                        print("Syringe homing will fail if initial position is too far from limit switch.")
-                        print("Dont Know Why...")
-                        print("Move syringe position within range (approx 25 mm)\nbefore initiating manual homing of syringe.")
-                        print("Press button again to proceed with syringe homing (if you dare...)!")
-                        print("****************************************************************************\n")
-                        self.syringe_homing_warned = True
-                else:
-                    print("Homing not enabled")
+        #     elif hat[0] == "HAT_LEFT":
+        #         if self.allow_homing == True:
+        #             if self.syringe_homing_warned:
+        #                 print("Homing left syringe\n")
+        #                 self.ot_control.home('B')
+        #                 self.allow_homing = False
+        #             else:
+        #                 print("\n****************************************************************************")
+        #                 print("Syringe homing will fail if initial position is too far from limit switch.")
+        #                 print("Dont Know Why...")
+        #                 print("Move syringe position within range (approx 25 mm)\nbefore initiating manual homing of syringe.")
+        #                 print("Press button again to proceed with syringe homing (if you dare...)!")
+        #                 print("****************************************************************************\n")
+        #                 self.syringe_homing_warned = True
+        #         else:
+        #             print("Homing not enabled")
 
-            elif hat[0] == "HAT_RIGHT":
-                if self.allow_homing == True:
-                    if self.syringe_homing_warned:
-                        print("Homing right syringe")
-                        self.ot_control.home('C')
-                        self.allow_homing = False
-                    else:
-                        print("\n****************************************************************************")
-                        print("Syringe homing will fail if initial position is too far from limit switch.")
-                        print("Dont Know Why...")
-                        print("Move syringe position within range (approx 25 mm)\nbefore initiating manual homing of syringe.")
-                        print("Press button again to proceed with syringe homing (if you dare...)!")
-                        print("****************************************************************************\n")
-                        self.syringe_homing_warned = True
-                else:
-                    print("Homing not enabled")
+        #     elif hat[0] == "HAT_RIGHT":
+        #         if self.allow_homing == True:
+        #             if self.syringe_homing_warned:
+        #                 print("Homing right syringe")
+        #                 self.ot_control.home('C')
+        #                 self.allow_homing = False
+        #             else:
+        #                 print("\n****************************************************************************")
+        #                 print("Syringe homing will fail if initial position is too far from limit switch.")
+        #                 print("Dont Know Why...")
+        #                 print("Move syringe position within range (approx 25 mm)\nbefore initiating manual homing of syringe.")
+        #                 print("Press button again to proceed with syringe homing (if you dare...)!")
+        #                 print("****************************************************************************\n")
+        #                 self.syringe_homing_warned = True
+        #         else:
+        #             print("Homing not enabled")
 
-            elif hat[0] == "HAT_DOWN":
-                if self.allow_homing == True:
-                    self.ot_control.home('XYZA')
-                    self.allow_homing = False
-                else:
-                    print("Homing not enabled")
+        #     elif hat[0] == "HAT_DOWN":
+        #         if self.allow_homing == True:
+        #             self.ot_control.home('XYZA')
+        #             self.allow_homing = False
+        #         else:
+        #             print("Homing not enabled")
                 
 
-        if len(axis) != 0:
-            if axis[0] == "L_STICK_LEFT":
-                # print("left")
-                self.ot_control.move_left(self.ot_control.xyz_step_size)
-            elif axis[0] == "L_STICK_RIGHT":
-                # print("right")
-                self.ot_control.move_right(self.ot_control.xyz_step_size)
-            elif axis[0] == "L_STICK_UP":
-                # print("back")
-                self.ot_control.move_forward(self.ot_control.xyz_step_size)
-            elif axis[0] == "L_STICK_DOWN":
-                # print("front")
-                self.ot_control.move_back(self.ot_control.xyz_step_size)
+        # if len(axis) != 0:
+        #     if axis[0] == "L_STICK_LEFT":
+        #         # print("left")
+        #         self.ot_control.move_left(self.ot_control.xyz_step_size)
+        #     elif axis[0] == "L_STICK_RIGHT":
+        #         # print("right")
+        #         self.ot_control.move_right(self.ot_control.xyz_step_size)
+        #     elif axis[0] == "L_STICK_UP":
+        #         # print("back")
+        #         self.ot_control.move_forward(self.ot_control.xyz_step_size)
+        #     elif axis[0] == "L_STICK_DOWN":
+        #         # print("front")
+        #         self.ot_control.move_back(self.ot_control.xyz_step_size)
 
-            elif axis[0] == "R_STICK_LEFT":
-                pass
-            elif axis[0] == "R_STICK_RIGHT":
-                pass
-            elif axis[0] == "R_STICK_UP":
-                if(self.ot_control.side == LEFT):
-                    self.ot_control.plunger_L_Up(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
-                    print('')
-                else:
-                    self.ot_control.plunger_R_Up(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
-            elif axis[0] == "R_STICK_DOWN":
-                if(self.ot_control.side == LEFT):
-                    self.ot_control.plunger_L_Down(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
-                else:
-                    self.ot_control.plunger_R_Down(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
-            elif axis[0] == "L_TRIGGER":
-                pass
-            elif axis[0] == "R_TRIGGER":
-                pass
+        #     elif axis[0] == "R_STICK_LEFT":
+        #         pass
+        #     elif axis[0] == "R_STICK_RIGHT":
+        #         pass
+        #     elif axis[0] == "R_STICK_UP":
+        #         if(self.ot_control.side == LEFT):
+        #             self.ot_control.plunger_L_Up(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
+        #             print('')
+        #         else:
+        #             self.ot_control.plunger_R_Up(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
+        #     elif axis[0] == "R_STICK_DOWN":
+        #         if(self.ot_control.side == LEFT):
+        #             self.ot_control.plunger_L_Down(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
+        #         else:
+        #             self.ot_control.plunger_R_Down(self.ot_control.syringe_step_size, self.ot_control.syringe_step_speed, syringe_model, syringe_parameters)
+        #     elif axis[0] == "L_TRIGGER":
+        #         pass
+        #     elif axis[0] == "R_TRIGGER":
+        #         pass
 
     
     def home_all_motors(self):

@@ -3,10 +3,10 @@
     "DOWN":  "joystick_step_y_motor",
     "RIGHT": "joystick_step_x_motor",
     "LEFT":  "joystick_step_x_motor",
-    "RB":    "double_step_size_XYZ",
-    "LB":    "half_step_size_XYZ",
-    "A":     "joystick_step_z_motor_down",
-    "Y":     "joystick_step_z_motor_up",
+    "RB":    "step_size_up",
+    "LB":    "step_size_down",
+    "A":     "Z_axis_Down",
+    "Y":     "Z_axis_Up",
     "X":     "change_vertical_axis",
     "B":     "report_current_position",
     "BACK":  "stop_listening",
@@ -14,5 +14,10 @@
     "0":     "joystick_step_x_motor",
     "1":     "joystick_step_y_motor",
     "2":     "nothing",
-    "3":     "joystick_step_syringe_motor"
+    "3":     "joystick_step_syringe_motor",
+    "RSTICK":"update_pipette_attachment_status",
+    "L_STICK_LEFT": "move_left",
+    "L_STICK_RIGHT": "move_right",
+    "L_STICK_UP": "move_forward",
+    "L_STICK_DOWN": "move_back"
 }

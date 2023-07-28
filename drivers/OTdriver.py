@@ -159,7 +159,7 @@ class OT2_nanotrons_driver(SM):
         else:
             return HIGH_SPEED
 
-    def step_size_up(self):
+    def step_size_up(self, *args):
         """"
         xyz_step_size is assigned from a list of available step sizes.
         This function first checks that the current step size is not the maximum step size on the list.
@@ -173,7 +173,7 @@ class OT2_nanotrons_driver(SM):
             print("\nCannot further increase the Manual Control movement size")
             print(f"XYZ Manual Movement set to {self.xyz_step_size} mm\n")
 
-    def step_size_down(self):
+    def step_size_down(self, *args):
         """"
         xyz_step_size is assigned from a list of available step sizes.
         This function first checks that the current step size is not the minimum step size on the list.
@@ -435,7 +435,7 @@ class OT2_nanotrons_driver(SM):
         print("Attaching right pipette in settings.")
         print("Make sure right pipette is really attached!")
     
-    def update_pipette_attachment_status(self):
+    def update_pipette_attachment_status(self, *args):
         print("updating pipette status\n")
         if self.side == LEFT:
             print(f"current side is {self.side}")
@@ -564,7 +564,7 @@ class OT2_nanotrons_driver(SM):
                         self.move({'Z': current_z_pos + 5}, speed= MEDIUM_SPEED)
                     self.move({'Z': z}, speed= SLOW_SPEED)
 
-    def change_vertical_axis(self):
+    def change_vertical_axis(self, *args):
         # This function allows the controller to have more functionality
         if self.side == LEFT:
             self.side = RIGHT
@@ -575,7 +575,7 @@ class OT2_nanotrons_driver(SM):
         else:
             print("Vertical Axis Error!")
             
-    def report_current_position(self):
+    def report_current_position(self, *args):
         # This function allows the controller to have more functionality
         X_position: float = self._position['X']
         Y_position: float = self._position['Y']
